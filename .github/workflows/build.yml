@@ -18,30 +18,41 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Unzip Project & Setup Build
+      - name: Unzip & Auto-Detect Project Root
         run: |
-          # Unzip the actual project archive
           if [ -f "ManMusic-Video-Player-Android-Project.zip" ]; then
-            echo "Unzipping project archive..."
             unzip -o ManMusic-Video-Player-Android-Project.zip -d extracted_project
-            cd extracted_project
-            # If the zip extracted into a single subfolder, go inside it
-            if [ $(ls -1 | wc -l) -eq 1 ] && [ -d "$(ls -1)" ]; then
-              cd "$(ls -1)"
-            fi
           fi
 
-          echo "Current directory contents:"
-          ls -la
+          # Find where the root build.gradle or settings.gradle is located
+          TARGET_DIR=$(find . -name "settings.gradle" -o -name "settings.gradle.kts" | head -n 1 | xargs -r dirname)
 
-          # Setup Gradle Wrapper if missing
+          if [ -z "$TARGET_DIR" ]; then
+            TARGET_DIR=$(find . -name "build.gradle" -o -name "build.gradle.kts" | head -n 1 | xargs -r dirname)
+          fi
+
+          if [ -z "$TARGET_DIR" ]; then
+            echo "No gradle file found anywhere, checking all files:"
+            find . -maxdepth 4
+            exit 1
+          fi
+
+          echo "Found Android Project at: $TARGET_DIR"
+          echo "PROJECT_DIR=$TARGET_DIR" >> $GITHUB_ENV
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+
           if [ ! -f "gradlew" ]; then
             gradle wrapper --gradle-version 8.2
           fi
           chmod +x gradlew
 
-          # Build APK
-          ./gradlew assembleDebug --stacktrace || ./gradlew assemble --stacktrace
+          ./gradlew assembleDebug --stacktrace || ./gradlew assemble --stacktrace || ./gradlew build --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
