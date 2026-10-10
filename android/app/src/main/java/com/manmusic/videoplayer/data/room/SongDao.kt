@@ -1,1 +1,0 @@
-// Queries for SongEntity, albums, artists, folders, and playlists.

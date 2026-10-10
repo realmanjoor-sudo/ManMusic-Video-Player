@@ -1,1 +1,0 @@
-// Manages music scanning, Room persistence, favorites, and custom cover overrides.
