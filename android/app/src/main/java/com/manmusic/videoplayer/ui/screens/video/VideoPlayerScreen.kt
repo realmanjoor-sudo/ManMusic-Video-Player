@@ -1,0 +1,1 @@
+// Video player implementation with 6 library tabs and gesture overlays.
