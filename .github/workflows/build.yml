@@ -18,24 +18,43 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Ensure Android Project Structure
+        run: |
+          if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
+            echo "include ':app'" > settings.gradle
+            if [ -d "android/app" ]; then
+              echo "project(':app').projectDir = new File('android/app')" >> settings.gradle
+            fi
+          fi
+
+          if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ]; then
+            cat << 'EOF' > build.gradle
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.2.2'
+                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22'
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+          fi
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Check and Make gradlew executable
+      - name: Generate Wrapper and Build APK
         run: |
-          if [ -d "android" ]; then
-            cd android
-          fi
-          if [ ! -f "gradlew" ]; then
-            gradle wrapper
-          fi
+          gradle wrapper --gradle-version 8.2
           chmod +x gradlew
-
-      - name: Build Debug APK
-        run: |
-          if [ -d "android" ]; then
-            cd android
-          fi
           ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
