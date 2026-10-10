@@ -18,15 +18,27 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Ensure Android Project Structure
+      - name: Locate Android Project & Prepare Build
         run: |
+          # Find directory containing build.gradle or app module
+          TARGET_DIR="."
+          if [ -d "android" ]; then
+            TARGET_DIR="android"
+          fi
+          echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
+
+          cd $TARGET_DIR
+
+          # Ensure settings.gradle exists
           if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
-            echo "include ':app'" > settings.gradle
-            if [ -d "android/app" ]; then
-              echo "project(':app').projectDir = new File('android/app')" >> settings.gradle
+            if [ -d "app" ]; then
+              echo "include ':app'" > settings.gradle
+            else
+              echo "rootProject.name = 'ManMusic-Video-Player'" > settings.gradle
             fi
           fi
 
+          # Ensure root build.gradle exists
           if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ]; then
             cat << 'EOF' > build.gradle
           buildscript {
@@ -53,12 +65,13 @@ jobs:
 
       - name: Generate Wrapper and Build APK
         run: |
+          cd ${{ env.TARGET_DIR }}
           gradle wrapper --gradle-version 8.2
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug --stacktrace || ./gradlew build --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: "**/build/outputs/apk/debug/*.apk"
+          path: "**/*.apk"
