@@ -18,36 +18,34 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Find & Build Android Project
+      - name: Unzip Project & Setup Build
         run: |
-          echo "Listing repository structure:"
-          find . -maxdepth 3 -not -path '*/.*'
-
-          # Look for build.gradle or app directory
-          APP_DIR=$(find . -name "build.gradle" -o -name "build.gradle.kts" | head -n 1 | xargs dirname)
-          if [ -z "$APP_DIR" ] || [ "$APP_DIR" = "." ]; then
-            if [ -d "android" ]; then
-              APP_DIR="android"
-            else
-              APP_DIR="."
+          # Unzip the actual project archive
+          if [ -f "ManMusic-Video-Player-Android-Project.zip" ]; then
+            echo "Unzipping project archive..."
+            unzip -o ManMusic-Video-Player-Android-Project.zip -d extracted_project
+            cd extracted_project
+            # If the zip extracted into a single subfolder, go inside it
+            if [ $(ls -1 | wc -l) -eq 1 ] && [ -d "$(ls -1)" ]; then
+              cd "$(ls -1)"
             fi
           fi
 
-          echo "Target Directory: $APP_DIR"
-          cd "$APP_DIR"
+          echo "Current directory contents:"
+          ls -la
 
-          # Create gradle wrapper if missing
-          gradle wrapper --gradle-version 8.2
+          # Setup Gradle Wrapper if missing
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper --gradle-version 8.2
+          fi
           chmod +x gradlew
 
-          # Try building assembleDebug or build
-          ./gradlew assembleDebug || ./gradlew assemble || ./gradlew build
+          # Build APK
+          ./gradlew assembleDebug --stacktrace || ./gradlew assemble --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: app-debug
-          path: |
-            **/*.apk
-            **/*.aab
+          path: "**/*.apk"
