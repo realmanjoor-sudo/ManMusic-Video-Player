@@ -18,60 +18,36 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Locate Android Project & Prepare Build
+      - name: Find & Build Android Project
         run: |
-          # Find directory containing build.gradle or app module
-          TARGET_DIR="."
-          if [ -d "android" ]; then
-            TARGET_DIR="android"
-          fi
-          echo "TARGET_DIR=$TARGET_DIR" >> $GITHUB_ENV
+          echo "Listing repository structure:"
+          find . -maxdepth 3 -not -path '*/.*'
 
-          cd $TARGET_DIR
-
-          # Ensure settings.gradle exists
-          if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
-            if [ -d "app" ]; then
-              echo "include ':app'" > settings.gradle
+          # Look for build.gradle or app directory
+          APP_DIR=$(find . -name "build.gradle" -o -name "build.gradle.kts" | head -n 1 | xargs dirname)
+          if [ -z "$APP_DIR" ] || [ "$APP_DIR" = "." ]; then
+            if [ -d "android" ]; then
+              APP_DIR="android"
             else
-              echo "rootProject.name = 'ManMusic-Video-Player'" > settings.gradle
+              APP_DIR="."
             fi
           fi
 
-          # Ensure root build.gradle exists
-          if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ]; then
-            cat << 'EOF' > build.gradle
-          buildscript {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:8.2.2'
-                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22'
-              }
-          }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          EOF
-          fi
+          echo "Target Directory: $APP_DIR"
+          cd "$APP_DIR"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Generate Wrapper and Build APK
-        run: |
-          cd ${{ env.TARGET_DIR }}
+          # Create gradle wrapper if missing
           gradle wrapper --gradle-version 8.2
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace || ./gradlew build --stacktrace
+
+          # Try building assembleDebug or build
+          ./gradlew assembleDebug || ./gradlew assemble || ./gradlew build
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: app-debug
-          path: "**/*.apk"
+          path: |
+            **/*.apk
+            **/*.aab
