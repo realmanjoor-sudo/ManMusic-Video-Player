@@ -18,45 +18,119 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Unzip & Auto-Detect Project Root
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Reconstruct Android Project
         run: |
-          if [ -f "ManMusic-Video-Player-Android-Project.zip" ]; then
-            unzip -o ManMusic-Video-Player-Android-Project.zip -d extracted_project
+          mkdir -p project/app
+          
+          # Move existing source directory into proper Android structure
+          if [ -d "android/app/src" ]; then
+            cp -r android/app/src project/app/
+          elif [ -d "extracted_project/android/app/src" ]; then
+            cp -r extracted_project/android/app/src project/app/
           fi
 
-          # Find where the root build.gradle or settings.gradle is located
-          TARGET_DIR=$(find . -name "settings.gradle" -o -name "settings.gradle.kts" | head -n 1 | xargs -r dirname)
+          cd project
 
-          if [ -z "$TARGET_DIR" ]; then
-            TARGET_DIR=$(find . -name "build.gradle" -o -name "build.gradle.kts" | head -n 1 | xargs -r dirname)
+          # 1. Root settings.gradle
+          cat << 'EOF' > settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "ManMusic-Video-Player"
+          include ':app'
+          EOF
+
+          # 2. Root build.gradle
+          cat << 'EOF' > build.gradle
+          plugins {
+              id 'com.android.application' version '8.2.2' apply false
+              id 'org.jetbrains.kotlin.android' version '1.9.22' apply false
+          }
+          EOF
+
+          # 3. Detect namespace from AndroidManifest.xml if available
+          PACKAGE_NAME="com.example.manmusic"
+          if [ -f "app/src/main/AndroidManifest.xml" ]; then
+            EXTRACTED_PKG=$(grep -oP 'package="\K[^"]+' app/src/main/AndroidManifest.xml || true)
+            if [ ! -z "$EXTRACTED_PKG" ]; then
+              PACKAGE_NAME="$EXTRACTED_PKG"
+            fi
           fi
 
-          if [ -z "$TARGET_DIR" ]; then
-            echo "No gradle file found anywhere, checking all files:"
-            find . -maxdepth 4
-            exit 1
-          fi
+          # 4. App module build.gradle
+          cat << EOF > app/build.gradle
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
 
-          echo "Found Android Project at: $TARGET_DIR"
-          echo "PROJECT_DIR=$TARGET_DIR" >> $GITHUB_ENV
+          android {
+              namespace '$PACKAGE_NAME'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId '$PACKAGE_NAME'
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+                  debug {
+                      debuggable true
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
+          }
+
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.12.0'
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'com.google.android.material:material:1.11.0'
+              implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+              implementation 'androidx.media3:media3-exoplayer:1.2.1'
+              implementation 'androidx.media3:media3-ui:1.2.1'
+          }
+          EOF
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Build APK
+      - name: Build Debug APK
         run: |
-          cd ${{ env.PROJECT_DIR }}
-
-          if [ ! -f "gradlew" ]; then
-            gradle wrapper --gradle-version 8.2
-          fi
+          cd project
+          gradle wrapper --gradle-version 8.2
           chmod +x gradlew
-
-          ./gradlew assembleDebug --stacktrace || ./gradlew assemble --stacktrace || ./gradlew build --stacktrace
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: app-debug
-          path: "**/*.apk"
+          path: "project/app/build/outputs/apk/debug/*.apk"
